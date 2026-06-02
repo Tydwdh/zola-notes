@@ -1,0 +1,29 @@
+{% macro folder_tree(section_path, current_path="", icon_sprite="") %}
+{% set node = get_section(path=section_path) %}
+{% for child_path in node.subsections %}
+{% set child = get_section(path=child_path) %}
+{% set active_tail = current_path | trim_start_matches(pat=child.path) %}
+<div class="folder-node{% if child.subsections %} has-children{% endif %}" data-folder-node data-folder-path="{{ child.path }}" data-direct-count="{{ child.pages | length }}">
+  <div class="folder-row">
+    {% if child.subsections %}
+    <button class="folder-link folder-trigger{% if current_path == child.path %} active{% elif current_path and active_tail != current_path %} open{% endif %}" type="button" aria-expanded="false" aria-label="展开 {{ child.title }}" data-folder-toggle>
+      <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#folder"></use></svg>
+      <strong>{{ child.title }}</strong>
+      <em data-folder-count>{{ child.pages | length }}</em>
+    </button>
+    {% else %}
+    <a class="folder-link{% if current_path == child.path %} active{% elif current_path and active_tail != current_path %} open{% endif %}" href="{{ child.permalink | safe }}">
+      <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#folder"></use></svg>
+      <strong>{{ child.title }}</strong>
+      <em data-folder-count>{{ child.pages | length }}</em>
+    </a>
+    {% endif %}
+  </div>
+  {% if child.subsections %}
+  <div class="folder-children" hidden>
+    {{ self::folder_tree(section_path=child_path, current_path=current_path, icon_sprite=icon_sprite) }}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endmacro folder_tree %}

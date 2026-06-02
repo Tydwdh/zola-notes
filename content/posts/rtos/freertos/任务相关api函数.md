@@ -1,10 +1,10 @@
-+++
-title = "FreeRTOS 任务相关 API 整理"
+﻿+++
+title = "任务相关API函数"
 date = 2025-07-10
-description = "按任务查询、优先级、状态、时间计数器和运行统计整理 FreeRTOS 常用任务 API。"
+description = "整理 任务相关API函数 相关笔记。"
 
 [taxonomies]
-tags = ["freertos", "rtos", "embedded"]
+tags = ["freertos", "rtos"]
 +++
 # 1.任务相关API函数
 

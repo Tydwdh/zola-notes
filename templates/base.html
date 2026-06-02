@@ -9,7 +9,7 @@
   <script>
     window.MathJax = {
       tex: {
-        inlineMath: [['\\(', '\\)']],
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
         displayMath: [['$$', '$$'], ['\\[', '\\]']]
       },
       options: {
@@ -72,6 +72,88 @@
           const rect = card.getBoundingClientRect();
           card.style.setProperty('--mx', `${event.clientX - rect.left}px`);
           card.style.setProperty('--my', `${event.clientY - rect.top}px`);
+        });
+      });
+
+      const folderStorageKey = 'zola-notes:open-folders';
+      const readOpenFolders = () => {
+        try {
+          const saved = JSON.parse(window.localStorage.getItem(folderStorageKey) || '[]');
+          return new Set(Array.isArray(saved) ? saved : []);
+        } catch (_) {
+          return new Set();
+        }
+      };
+      const writeOpenFolders = (openFolders) => {
+        try {
+          window.localStorage.setItem(folderStorageKey, JSON.stringify([...openFolders]));
+        } catch (_) {
+          // Ignore storage errors in private browsing or restricted contexts.
+        }
+      };
+      const openFolders = readOpenFolders();
+
+      const countFolderPages = (node) => {
+        const directCount = Number.parseInt(node.dataset.directCount || '0', 10) || 0;
+        const childNodes = node.querySelectorAll(':scope > .folder-children > .folder-node');
+        let totalCount = directCount;
+
+        childNodes.forEach((childNode) => {
+          totalCount += countFolderPages(childNode);
+        });
+
+        const counter = node.querySelector(':scope > .folder-row [data-folder-count]');
+        if (counter) {
+          counter.textContent = totalCount;
+        }
+
+        return totalCount;
+      };
+
+      const setFolderExpanded = (node, expanded, persist = true) => {
+        const children = node.querySelector(':scope > .folder-children');
+        const toggle = node.querySelector(':scope > .folder-row [data-folder-toggle]');
+        const path = node.dataset.folderPath;
+
+        if (!children || !toggle) {
+          return;
+        }
+
+        const title = node.querySelector(':scope > .folder-row strong')?.textContent?.trim() || '目录';
+        const icon = node.querySelector(':scope > .folder-row .tree-icon use');
+        children.hidden = !expanded;
+        node.classList.toggle('is-expanded', expanded);
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('aria-label', `${expanded ? '收起' : '展开'} ${title}`);
+
+        if (icon) {
+          const href = icon.getAttribute('href') || '';
+          icon.setAttribute('href', href.replace(/#.*$/, expanded ? '#folder-open' : '#folder'));
+        }
+
+        if (persist && path) {
+          if (expanded) {
+            openFolders.add(path);
+          } else {
+            openFolders.delete(path);
+          }
+          writeOpenFolders(openFolders);
+        }
+      };
+
+      document.querySelectorAll('.folder-tree > .folder-node').forEach((node) => {
+        countFolderPages(node);
+      });
+
+      document.querySelectorAll('.folder-node.has-children').forEach((node) => {
+        const toggle = node.querySelector(':scope > .folder-row [data-folder-toggle]');
+        const path = node.dataset.folderPath;
+
+        setFolderExpanded(node, path ? openFolders.has(path) : false, false);
+
+        toggle?.addEventListener('click', (event) => {
+          event.preventDefault();
+          setFolderExpanded(node, !node.classList.contains('is-expanded'));
         });
       });
 
@@ -167,6 +249,62 @@
               button.classList.remove('is-error');
               button.setAttribute('aria-label', '复制代码');
             }, 1200);
+          }
+        });
+      });
+
+      document.querySelectorAll('.article-body img').forEach((image) => {
+        image.loading = image.loading || 'lazy';
+        image.decoding = image.decoding || 'async';
+        image.tabIndex = 0;
+        image.setAttribute('role', 'button');
+        image.setAttribute('aria-label', '查看原图');
+
+        const openImage = () => {
+          const lightbox = document.createElement('div');
+          lightbox.className = 'image-lightbox';
+          lightbox.setAttribute('role', 'dialog');
+          lightbox.setAttribute('aria-modal', 'true');
+
+          const closeButton = document.createElement('button');
+          closeButton.type = 'button';
+          closeButton.setAttribute('aria-label', '关闭图片预览');
+          closeButton.textContent = '×';
+
+          const preview = document.createElement('img');
+          preview.src = image.currentSrc || image.src;
+          preview.alt = image.alt || '';
+
+          const close = () => {
+            lightbox.remove();
+            document.removeEventListener('keydown', onKeydown);
+          };
+
+          const onKeydown = (event) => {
+            if (event.key === 'Escape') {
+              close();
+            }
+          };
+
+          lightbox.addEventListener('click', (event) => {
+            if (event.target === lightbox) {
+              close();
+            }
+          });
+          closeButton.addEventListener('click', close);
+          document.addEventListener('keydown', onKeydown);
+
+          lightbox.appendChild(closeButton);
+          lightbox.appendChild(preview);
+          document.body.appendChild(lightbox);
+          closeButton.focus();
+        };
+
+        image.addEventListener('click', openImage);
+        image.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openImage();
           }
         });
       });

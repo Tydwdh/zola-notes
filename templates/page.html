@@ -4,8 +4,7 @@
 {% block description %}{% if page.description %}{{ page.description }}{% else %}{{ config.description }}{% endif %}{% endblock description %}
 
 {% block content %}
-{% set folder_name = page.path | trim_start_matches(pat="/posts/") | split(pat="/") | first %}
-{% set parent_path = "posts/" ~ folder_name ~ "/_index.md" %}
+{% set parent_path = page.path | trim_start_matches(pat="/") | trim_end_matches(pat="/") | replace(from=page.slug, to="_index.md") %}
 {% set parent_section = get_section(path=parent_path) %}
 {% set icon_sprite = get_url(path='icons/lucide-sprite.svg') %}
 
