@@ -1,0 +1,283 @@
++++
+title = "RT-Thread 线程管理笔记"
+date = 2025-07-09
+description = "整理 RT-Thread 线程状态、调度器、线程创建、启动、销毁和延时等常用 API。"
+
+[taxonomies]
+tags = ["rt-thread", "rtos", "embedded"]
++++
+## 1. 概述
+
+RT-Thread是一个基于线程调度的多任务实时操作系统，采用完全抢占式的基于优先级的调度算法。
+
+### 调度特点：
+
+- **调度方式**：完全抢占式，基于优先级
+- **优先级范围**：支持8/32/256级优先级
+    - 0表示最高优先级
+    - 7/31/255表示最低优先级（用于空闲线程）
+- **同优先级处理**：支持相同优先级的线程，采用时间片轮转调度
+
+## 2. 线程状态详解
+
+线程在运行过程中包含5种状态，系统会自动根据运行情况动态调整：
+
+|状态|宏定义|数值|描述|
+|---|---|---|---|
+|初始状态|RT_THREAD_INIT|0x00|线程刚创建，还未开始运行，不参与调度|
+|就绪状态|RT_THREAD_READY|0x01|按优先级排队等待执行，参与调度|
+|运行状态|RT_THREAD_RUNNING|0x03|线程正在运行|
+|挂起状态|RT_THREAD_SUSPEND|0x02|因资源不可用或主动延时而挂起，不参与调度|
+|关闭状态|RT_THREAD_CLOSE|0x04|线程运行结束，不参与调度|
+
+**注意**：RT_THREAD_BLOCK 等同于 RT_THREAD_SUSPEND（阻塞状态）
+
+## 3. 线程控制命令
+
+|命令|宏定义|数值|用途|
+|---|---|---|---|
+|启动线程|RT_THREAD_CTRL_STARTUP|0x00|启动线程|
+|关闭线程|RT_THREAD_CTRL_CLOSE|0x01|关闭线程|
+|改变优先级|RT_THREAD_CTRL_CHANGE_PRIORITY|0x02|修改线程优先级|
+|获取信息|RT_THREAD_CTRL_INFO|0x03|获取线程信息|
+
+## 4. 核心数据结构
+
+### 线程控制块
+
+```c
+struct rt_thread;  // 线程控制块结构体
+typedef struct rt_thread *rt_thread_t;  // 线程类型指针定义
+```
+
+## 5. 调度器管理函数
+
+### 5.1 调度器锁定/解锁
+
+```c
+void rt_enter_critical(void);     // 调度器上锁
+void rt_exit_critical(void);      // 调度器解锁
+rt_uint16_t rt_critical_level(void); // 获取调度锁深度
+```
+
+**使用场景**：在临界区代码中保护共享资源，防止被其他线程打断。
+
+**注意事项**：
+
+- 上锁后必须及时解锁，否则系统无法进行线程切换
+- 锁深度为0表示未上锁
+- 支持嵌套上锁
+
+### 5.2 线程调度
+
+```c
+void rt_schedule(void);  // 执行一次线程调度
+```
+
+**功能**：选择最高优先级的就绪线程并切换运行。
+
+## 6. 空闲线程管理
+
+```c
+void rt_thread_idle_excute(void);        // 系统空闲线程执行函数
+rt_thread_t rt_thread_idle_gethandler(void); // 获取空闲线程处理函数
+```
+
+**说明**：当系统中没有其他线程运行时，空闲线程会自动运行。
+
+## 7. 线程生命周期管理
+
+### 7.1 线程初始化（静态创建）
+
+```c
+rt_err_t rt_thread_init(
+    struct rt_thread *thread,    // 线程句柄（用户提供）
+    const char *name,            // 线程名称
+    void(*entry)(void *parameter), // 入口函数
+    void *parameter,             // 入口函数参数
+    void *stack_start,           // 栈起始地址
+    rt_uint32_t stack_size,      // 栈大小（字节）
+    rt_uint8_t priority,         // 优先级
+    rt_uint32_t tick             // 时间片大小
+);
+```
+
+**适用场景**：用于初始化静态线程对象（线程控制块由用户提供）
+
+**参数说明**：
+
+- **name**：最大长度由RT_NAME_MAX宏定义，超出部分自动截取
+- **stack_size**：需要进行地址对齐（如ARM架构需要4字节对齐）
+- **priority**：数值越小优先级越高，范围0~255（具体取决于RT_THREAD_PRIORITY_MAX配置）
+- **tick**：相同优先级线程的时间片大小
+
+**返回值**：成功返回RT_EOK，失败返回-RT_ERROR
+
+### 7.2 线程创建（动态创建）
+
+```c
+rt_thread_t rt_thread_create(
+    const char *name,            // 线程名称
+    void(*entry)(void *parameter), // 入口函数
+    void *parameter,             // 入口函数参数
+    rt_uint32_t stack_size,      // 栈大小
+    rt_uint8_t priority,         // 优先级
+    rt_uint32_t tick             // 时间片大小
+);
+```
+
+**适用场景**：系统自动分配线程对象内存和堆栈
+
+**返回值**：成功返回线程对象句柄，失败返回RT_NULL
+
+### 7.3 线程启动
+
+```c
+rt_err_t rt_thread_startup(rt_thread_t thread);
+```
+
+**功能**：启动线程并将其放入系统就绪队列
+
+**注意**：无论是init还是create创建的线程，都需要调用startup才能开始运行
+
+### 7.4 线程销毁
+
+```c
+rt_err_t rt_thread_detach(rt_thread_t thread);  // 脱离线程（用于init创建的线程）
+rt_err_t rt_thread_delete(rt_thread_t thread);  // 删除线程（用于create创建的线程）
+```
+
+**重要区别**：
+
+- **detach**：用于由rt_thread_init创建的静态线程
+- **delete**：用于由rt_thread_create创建的动态线程
+
+## 8. 线程控制函数
+
+### 8.1 获取当前线程
+
+```c
+rt_thread_t rt_thread_self(void);
+```
+
+**返回值**：当前线程对象句柄，调度器未启动时返回RT_NULL
+
+### 8.2 线程让出处理器
+
+```c
+rt_err_t rt_thread_yield(void);
+```
+
+**功能**：当前线程主动让出处理器，调度器选择相同优先级的下一个线程执行
+
+**特点**：线程仍保持在就绪队列中
+
+### 8.3 线程延时函数
+
+```c
+rt_err_t rt_thread_sleep(rt_tick_t tick);     // 线程睡眠（系统节拍）
+rt_err_t rt_thread_delay(rt_tick_t tick);     // 线程延时（系统节拍）
+rt_err_t rt_thread_mdelay(rt_int32_t ms);     // 线程毫秒延时
+```
+
+**说明**：
+
+- **sleep**和**delay**功能相同，都是按系统节拍延时
+- **mdelay**按毫秒延时，更便于使用
+
+### 8.4 线程挂起和恢复
+
+```c
+rt_err_t rt_thread_suspend(rt_thread_t thread);  // 挂起线程
+rt_err_t rt_thread_resume(rt_thread_t thread);   // 恢复线程
+```
+
+**suspend注意事项**：
+
+- 如果挂起的是当前线程，必须调用rt_schedule()进行调度
+- 不推荐在应用中直接使用该接口
+- 挂起后线程不参与调度
+
+**resume功能**：
+
+- 将挂起的线程重新放入就绪队列
+- 如果被恢复线程优先级最高，系统会进行上下文切换
+
+### 8.5 线程通用控制
+
+```c
+rt_err_t rt_thread_control(
+    rt_thread_t thread,  // 目标线程
+    int cmd,            // 控制命令
+    void *arg           // 命令参数
+);
+```
+
+**支持的命令**：
+
+- RT_THREAD_CTRL_CHANGE_PRIORITY：改变线程优先级
+- RT_THREAD_CTRL_STARTUP：启动线程
+- RT_THREAD_CTRL_CLOSE：删除线程
+
+## 9. 使用示例和最佳实践
+
+### 9.1 线程创建模板
+
+```c
+// 方式1：动态创建
+rt_thread_t thread1 = rt_thread_create(
+    "thread1",          // 线程名称
+    thread_entry,       // 入口函数
+    RT_NULL,           // 参数
+    1024,              // 栈大小
+    10,                // 优先级
+    20                 // 时间片
+);
+
+if (thread1 != RT_NULL) {
+    rt_thread_startup(thread1);
+}
+
+// 方式2：静态创建
+static struct rt_thread thread2;
+static char thread2_stack[1024];
+
+rt_thread_init(&thread2, "thread2", thread_entry, RT_NULL,
+               thread2_stack, sizeof(thread2_stack), 10, 20);
+rt_thread_startup(&thread2);
+```
+
+### 9.2 线程入口函数模板
+
+```c
+void thread_entry(void *parameter) {
+    while (1) {
+        // 线程主要工作
+        rt_kprintf("Thread is running\n");
+        
+        // 延时或让出处理器
+        rt_thread_mdelay(1000);  // 延时1秒
+        // 或者 rt_thread_yield(); // 让出处理器
+    }
+}
+```
+
+### 9.3 临界区保护示例
+
+```c
+void critical_section_example(void) {
+    rt_enter_critical();  // 进入临界区
+    
+    // 访问共享资源
+    shared_variable++;
+    
+    rt_exit_critical();   // 退出临界区
+}
+```
+
+
+## 10. 错误码说明
+
+- **RT_EOK**：操作成功
+- **-RT_ERROR**：操作失败
+- **RT_NULL**：空指针（线程创建失败时返回）

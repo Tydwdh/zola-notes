@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ config.title }}{% endblock title %}</title>
+  <meta name="description" content="{% block description %}{{ config.description }}{% endblock description %}">
+  <link rel="stylesheet" href="{{ get_url(path='site.css') }}">
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>
+  {% set icon_sprite = get_url(path='icons/lucide-sprite.svg') %}
+  <header class="site-header">
+    <a class="site-title" href="{{ get_url(path='/') }}">
+      <svg class="site-mark" aria-hidden="true"><use href="{{ icon_sprite }}#book-open-text"></use></svg>
+      <span>{{ config.title }}</span>
+    </a>
+    <nav class="site-nav" aria-label="main navigation">
+      <a href="{{ get_url(path='/posts/') }}"><svg aria-hidden="true"><use href="{{ icon_sprite }}#file-text"></use></svg>文章</a>
+      <a href="{{ get_url(path='/tags/') }}"><svg aria-hidden="true"><use href="{{ icon_sprite }}#tags"></use></svg>标签</a>
+    </nav>
+  </header>
+  <main class="page-shell">
+    {% block content %}{% endblock content %}
+  </main>
+  <div class="cursor-effects" aria-hidden="true"></div>
+  <script src="{{ get_url(path='vendor/live2d/L2Dwidget.min.js') }}"></script>
+  <script>
+    (() => {
+      const cards = document.querySelectorAll('.post-item');
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (window.L2Dwidget && !reduceMotion) {
+        window.L2Dwidget.init({
+          model: {
+            jsonPath: "{{ get_url(path='vendor/live2d/shizuku/shizuku.model.json') }}",
+            scale: 1
+          },
+          display: {
+            position: "right",
+            width: 150,
+            height: 300,
+            hOffset: 4,
+            vOffset: -30
+          },
+          mobile: {
+            show: false
+          },
+          react: {
+            opacity: 0.86
+          },
+          dialog: {
+            enable: true,
+            hitokoto: false
+          }
+        });
+      }
+
+      cards.forEach((card) => {
+        card.addEventListener('pointermove', (event) => {
+          const rect = card.getBoundingClientRect();
+          card.style.setProperty('--mx', `${event.clientX - rect.left}px`);
+          card.style.setProperty('--my', `${event.clientY - rect.top}px`);
+        });
+      });
+
+      document.querySelectorAll('.toc-panel a[href*="#"]').forEach((link) => {
+        link.addEventListener('click', (event) => {
+          const href = link.getAttribute('href');
+          if (!href) {
+            return;
+          }
+
+          const url = new URL(href, window.location.href);
+          if (url.origin !== window.location.origin || url.pathname !== window.location.pathname || !url.hash) {
+            return;
+          }
+
+          const rawId = url.hash.slice(1);
+          let target = document.getElementById(rawId);
+
+          if (!target) {
+            try {
+              target = document.getElementById(decodeURIComponent(rawId));
+            } catch (_) {
+              target = null;
+            }
+          }
+
+          if (!target) {
+            return;
+          }
+
+          event.preventDefault();
+          target.scrollIntoView({
+            behavior: reduceMotion ? 'auto' : 'smooth',
+            block: 'start'
+          });
+          window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+        });
+      });
+
+      document.querySelectorAll('.article-body pre').forEach((pre) => {
+        const code = pre.querySelector('code');
+        if (!code || pre.closest('.code-shell')) {
+          return;
+        }
+
+        const shell = document.createElement('div');
+        shell.className = 'code-shell';
+        pre.parentNode.insertBefore(shell, pre);
+        shell.appendChild(pre);
+
+        const button = document.createElement('button');
+        button.className = 'code-copy-button';
+        button.type = 'button';
+        button.setAttribute('aria-label', '复制代码');
+        button.innerHTML = `
+          <span class="copy-label">复制</span>
+          <span class="copy-done-icon" aria-hidden="true">✓</span>
+        `;
+        shell.appendChild(button);
+
+        const copyText = async () => {
+          const text = code.textContent || '';
+
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+          }
+
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          textarea.remove();
+        };
+
+        button.addEventListener('click', async () => {
+          try {
+            await copyText();
+            button.classList.add('is-copied');
+            button.setAttribute('aria-label', '已复制');
+            window.setTimeout(() => {
+              button.classList.remove('is-copied');
+              button.setAttribute('aria-label', '复制代码');
+            }, 1200);
+          } catch (_) {
+            button.classList.add('is-error');
+            button.setAttribute('aria-label', '复制失败');
+            window.setTimeout(() => {
+              button.classList.remove('is-error');
+              button.setAttribute('aria-label', '复制代码');
+            }, 1200);
+          }
+        });
+      });
+
+      const effectsLayer = document.querySelector('.cursor-effects');
+      const finePointer = window.matchMedia('(pointer: fine)').matches;
+
+      if (effectsLayer && finePointer && !reduceMotion) {
+        let colorIndex = 0;
+
+        const colors = () => {
+          const styles = getComputedStyle(document.documentElement);
+          return [
+            styles.getPropertyValue('--effect-a').trim() || '#1f6f66',
+            styles.getPropertyValue('--effect-b').trim() || '#a15c26'
+          ];
+        };
+
+        let palette = colors();
+
+        const trimLayer = () => {
+          while (effectsLayer.childElementCount > 90) {
+            effectsLayer.firstElementChild?.remove();
+          }
+        };
+
+        const spawn = (className, x, y, options = {}) => {
+          const node = document.createElement('span');
+          node.className = className;
+          node.style.left = `${x}px`;
+          node.style.top = `${y}px`;
+          node.style.setProperty('--effect-color', options.color || palette[colorIndex % palette.length]);
+          node.style.setProperty('--dx', `${options.dx || 0}px`);
+          node.style.setProperty('--dy', `${options.dy || 0}px`);
+          node.style.setProperty('--size', `${options.size || 8}px`);
+          effectsLayer.appendChild(node);
+          trimLayer();
+          node.addEventListener('animationend', () => node.remove(), { once: true });
+          return node;
+        };
+
+        const click = (event) => {
+          if (event.button !== 0) {
+            return;
+          }
+
+          const x = event.clientX;
+          const y = event.clientY;
+          palette = colors();
+
+          spawn('click-ring', x, y, {
+            color: palette[0],
+            size: 18
+          });
+
+          for (let i = 0; i < 10; i += 1) {
+            const angle = (Math.PI * 2 * i) / 10;
+            const distance = 26 + Math.random() * 16;
+            spawn('click-spark', x, y, {
+              color: palette[i % palette.length],
+              size: 4 + Math.random() * 3,
+              dx: Math.cos(angle) * distance,
+              dy: Math.sin(angle) * distance
+            });
+          }
+        };
+
+        window.addEventListener('resize', () => {
+          palette = colors();
+        }, { passive: true });
+        window.addEventListener('pointerdown', click, { passive: true });
+      }
+    })();
+  </script>
+</body>
+</html>

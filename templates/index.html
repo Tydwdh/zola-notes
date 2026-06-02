@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set posts = get_section(path="posts/_index.md") %}
+{% set rust = get_section(path="posts/rust/_index.md") %}
+{% set rtos = get_section(path="posts/rtos/_index.md") %}
+{% set control = get_section(path="posts/control/_index.md") %}
+{% set tools = get_section(path="posts/tools/_index.md") %}
+{% set icon_sprite = get_url(path='icons/lucide-sprite.svg') %}
+
+<div class="notes-layout">
+  <aside class="folder-panel" aria-label="folder navigation">
+    <div class="panel-kicker">notebook</div>
+    <h1>{{ config.title }}</h1>
+    <p>一些写代码、调嵌入式和整理工具链时留下的笔记。</p>
+    <nav class="folder-tree">
+      <a href="{{ rust.permalink | safe }}">
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#folder-code"></use></svg>
+        <strong>Rust</strong>
+        <em>{{ rust.pages | length }}</em>
+      </a>
+      <a href="{{ rtos.permalink | safe }}">
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#server-cog"></use></svg>
+        <strong>实时系统</strong>
+        <em>{{ rtos.pages | length }}</em>
+      </a>
+      <a href="{{ control.permalink | safe }}">
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#chart-spline"></use></svg>
+        <strong>控制与信号</strong>
+        <em>{{ control.pages | length }}</em>
+      </a>
+      <a href="{{ tools.permalink | safe }}">
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#terminal"></use></svg>
+        <strong>工程工具</strong>
+        <em>{{ tools.pages | length }}</em>
+      </a>
+    </nav>
+  </aside>
+
+  <section class="workspace">
+    <header class="workspace-header">
+      <p class="path-line">~/notes/public</p>
+      <h2>最近整理</h2>
+      <p>当前目录下有 {{ posts.pages | length }} 篇公开笔记。左侧目录负责按主题筛选，这里只展示文章流。</p>
+    </header>
+
+    <section class="file-list primary" aria-label="recent notes">
+      <div class="list-heading">
+        <h2>文章</h2>
+        <a href="{{ get_url(path='/posts/') }}">全部文章</a>
+      </div>
+      {% for page in posts.pages | slice(end=8) %}
+      <article class="file-row">
+        <a class="file-title" href="{{ page.permalink | safe }}"><svg class="file-icon" aria-hidden="true"><use href="{{ icon_sprite }}#file-text"></use></svg><span>{{ page.title }}</span></a>
+        <span class="file-date">{{ page.date | date(format="%Y-%m-%d") }}</span>
+      </article>
+      {% endfor %}
+    </section>
+  </section>
+</div>
+{% endblock content %}

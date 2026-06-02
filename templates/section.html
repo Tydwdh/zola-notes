@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }} | {{ config.title }}{% endblock title %}
+
+{% block content %}
+{% set rust = get_section(path="posts/rust/_index.md") %}
+{% set rtos = get_section(path="posts/rtos/_index.md") %}
+{% set control = get_section(path="posts/control/_index.md") %}
+{% set tools = get_section(path="posts/tools/_index.md") %}
+{% set icon_sprite = get_url(path='icons/lucide-sprite.svg') %}
+
+<div class="notes-layout">
+  <aside class="folder-panel compact" aria-label="folder navigation">
+    <div class="panel-kicker">folders</div>
+    <nav class="folder-tree">
+      <a href="{{ rust.permalink | safe }}" {% if section.path == rust.path %}class="active"{% endif %}>
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#folder-code"></use></svg>
+        <strong>Rust</strong>
+        <em>{{ rust.pages | length }}</em>
+      </a>
+      <a href="{{ rtos.permalink | safe }}" {% if section.path == rtos.path %}class="active"{% endif %}>
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#server-cog"></use></svg>
+        <strong>实时系统</strong>
+        <em>{{ rtos.pages | length }}</em>
+      </a>
+      <a href="{{ control.permalink | safe }}" {% if section.path == control.path %}class="active"{% endif %}>
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#chart-spline"></use></svg>
+        <strong>控制与信号</strong>
+        <em>{{ control.pages | length }}</em>
+      </a>
+      <a href="{{ tools.permalink | safe }}" {% if section.path == tools.path %}class="active"{% endif %}>
+        <svg class="tree-icon" aria-hidden="true"><use href="{{ icon_sprite }}#terminal"></use></svg>
+        <strong>工程工具</strong>
+        <em>{{ tools.pages | length }}</em>
+      </a>
+    </nav>
+  </aside>
+
+  <section class="workspace">
+    <header class="workspace-header">
+      <p class="path-line">~/notes/{{ section.path | trim_start_matches(pat="posts/") | trim_end_matches(pat="/_index.md") }}</p>
+      <h1>{{ section.title }}</h1>
+      {% if section.description %}
+      <p>{{ section.description }}</p>
+      {% endif %}
+    </header>
+
+    <section class="file-list primary" aria-label="{{ section.title }}">
+      <div class="list-heading">
+        <h2>文章</h2>
+        <span>{{ section.pages | length }} 篇</span>
+      </div>
+      {% for page in section.pages %}
+      <article class="file-row">
+        <a class="file-title" href="{{ page.permalink | safe }}"><svg class="file-icon" aria-hidden="true"><use href="{{ icon_sprite }}#file-text"></use></svg><span>{{ page.title }}</span></a>
+        <span class="file-date">{{ page.date | date(format="%Y-%m-%d") }}</span>
+        {% if page.description %}
+        <p>{{ page.description }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </section>
+  </section>
+</div>
+{% endblock content %}

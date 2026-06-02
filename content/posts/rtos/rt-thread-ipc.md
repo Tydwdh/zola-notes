@@ -1,0 +1,278 @@
++++
+title = "RT-Thread 线程间通信机制"
+date = 2025-07-10
+description = "汇总 RT-Thread 中信号量、互斥量、事件、邮箱、消息队列和信号的使用方式。"
+
+[taxonomies]
+tags = ["rt-thread", "rtos", "ipc"]
++++
+## 1. 概述
+
+RT-Thread操作系统支持多种线程间同步与通信机制：
+
+- **信号量**：轻量级同步机制，用于线程间的互斥和同步
+- **互斥量**：特殊的二值信号量，支持递归访问和优先级翻转防护
+- **事件**：实现一对多、多对多的线程间同步，支持逻辑与/或操作
+- **邮箱**：传递4字节消息，具备缓存功能
+- **消息队列**：传递不定长消息，支持异步通信
+- **信号**：异步事件通知机制，类似中断处理
+
+## 2. 通用标志位定义
+
+|宏定义|值|说明|
+|---|---|---|
+|RT_IPC_FLAG_FIFO|0x00|先进先出模式|
+|RT_IPC_FLAG_PRIO|0x01|优先级模式|
+|RT_WAITING_FOREVER|-1|永远阻塞直到获得资源|
+|RT_WAITING_NO|0|无阻塞|
+
+## 3. 信号量管理
+
+### 3.1 数据结构
+
+```c
+struct rt_semaphore;        // 信号量控制块
+typedef struct rt_semaphore *rt_sem_t;  // 信号量句柄类型
+```
+
+### 3.2 核心函数
+
+#### 静态创建
+
+```c
+rt_err_t rt_sem_init(rt_sem_t sem,          // 信号量对象句柄
+                     const char *name,      // 信号量名称
+                     rt_uint32_t value,     // 初始值
+                     rt_uint8_t flag);      // 标志位
+```
+
+#### 动态创建
+
+```c
+rt_sem_t rt_sem_create(const char *name,
+                       rt_uint32_t value,
+                       rt_uint8_t flag);
+```
+
+#### 获取和释放
+
+```c
+rt_err_t rt_sem_take(rt_sem_t sem, rt_int32_t time);     // 获取信号量
+rt_err_t rt_sem_trytake(rt_sem_t sem);                   // 无等待获取
+rt_err_t rt_sem_release(rt_sem_t sem);                   // 释放信号量
+```
+
+#### 销毁
+
+```c
+rt_err_t rt_sem_detach(rt_sem_t sem);   // 脱离静态信号量
+rt_err_t rt_sem_delete(rt_sem_t sem);   // 删除动态信号量
+```
+
+### 3.3 使用示例
+
+```c
+// 创建信号量用于生产者-消费者同步
+rt_sem_t producer_sem = rt_sem_create("producer", 1, RT_IPC_FLAG_FIFO);
+rt_sem_t consumer_sem = rt_sem_create("consumer", 0, RT_IPC_FLAG_FIFO);
+
+// 生产者线程
+void producer_thread(void *param) {
+    while(1) {
+        rt_sem_take(producer_sem, RT_WAITING_FOREVER);
+        // 生产数据
+        rt_kprintf("Produced data\n");
+        rt_sem_release(consumer_sem);
+    }
+}
+
+// 消费者线程
+void consumer_thread(void *param) {
+    while(1) {
+        rt_sem_take(consumer_sem, RT_WAITING_FOREVER);
+        // 消费数据
+        rt_kprintf("Consumed data\n");
+        rt_sem_release(producer_sem);
+    }
+}
+```
+
+## 4. 互斥量管理
+
+### 4.1 数据结构
+
+```c
+struct rt_mutex;        // 互斥量控制块
+typedef struct rt_mutex *rt_mutex_t;  // 互斥量句柄类型
+```
+
+### 4.2 核心函数
+
+#### 静态创建
+
+```c
+rt_err_t rt_mutex_init(rt_mutex_t mutex,
+                       const char *name,
+                       rt_uint8_t flag);
+```
+
+#### 动态创建
+
+```c
+rt_mutex_t rt_mutex_create(const char *name,
+                           rt_uint8_t flag);
+```
+
+#### 获取和释放
+
+```c
+rt_err_t rt_mutex_take(rt_mutex_t mutex, rt_int32_t time);  // 获取互斥量
+rt_err_t rt_mutex_release(rt_mutex_t mutex);                // 释放互斥量
+```
+
+### 4.3 特点
+
+- **递归访问**：同一线程可多次获取同一互斥量
+- **优先级翻转防护**：防止低优先级线程阻塞高优先级线程
+- **所有权机制**：只有获取互斥量的线程才能释放它
+
+## 5. 事件管理
+
+### 5.1 数据结构
+
+```c
+struct rt_event;        // 事件控制块
+typedef struct rt_event *rt_event_t;  // 事件句柄类型
+```
+
+### 5.2 事件标志
+
+|宏定义|值|说明|
+|---|---|---|
+|RT_EVENT_FLAG_AND|0x01|逻辑与参数|
+|RT_EVENT_FLAG_OR|0x02|逻辑或参数|
+|RT_EVENT_FLAG_CLEAR|0x04|清除参数|
+
+### 5.3 核心函数
+
+```c
+rt_event_t rt_event_create(const char *name, rt_uint8_t flag);
+rt_err_t rt_event_send(rt_event_t event, rt_uint32_t set);
+rt_err_t rt_event_recv(rt_event_t event, rt_uint32_t set, 
+                       rt_uint8_t option, rt_int32_t timeout, 
+                       rt_uint32_t *recved);
+```
+
+### 5.4 使用示例
+
+```c
+#define EVENT_FLAG1 (1 << 0)
+#define EVENT_FLAG2 (1 << 1)
+
+rt_event_t event = rt_event_create("event", RT_IPC_FLAG_FIFO);
+
+// 发送事件
+rt_event_send(event, EVENT_FLAG1);
+
+// 等待事件（逻辑或）
+rt_uint32_t recv_event;
+rt_event_recv(event, EVENT_FLAG1 | EVENT_FLAG2, 
+              RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+              RT_WAITING_FOREVER, &recv_event);
+```
+
+## 6. 邮箱管理
+
+### 6.1 数据结构
+
+```c
+struct rt_mailbox;        // 邮箱控制块
+typedef struct rt_mailbox *rt_mailbox_t;  // 邮箱句柄类型
+```
+
+### 6.2 核心函数
+
+```c
+rt_mailbox_t rt_mb_create(const char *name, rt_size_t size, rt_uint8_t flag);
+rt_err_t rt_mb_send(rt_mailbox_t mb, rt_ubase_t value);
+rt_err_t rt_mb_send_wait(rt_mailbox_t mb, rt_ubase_t value, rt_int32_t timeout);
+rt_err_t rt_mb_recv(rt_mailbox_t mb, rt_ubase_t *value, rt_int32_t timeout);
+```
+
+### 6.3 特点
+
+- **固定大小**：每封邮件4字节
+- **缓存功能**：可缓存多封邮件
+- **同步发送**：支持等待式发送
+
+## 7. 消息队列管理
+
+### 7.1 数据结构
+
+```c
+struct rt_messagequeue;        // 消息队列控制块
+typedef struct rt_messagequeue *rt_mq_t;  // 消息队列句柄类型
+```
+
+### 7.2 核心函数
+
+```c
+rt_mq_t rt_mq_create(const char *name, rt_size_t msg_size, 
+                     rt_size_t max_msgs, rt_uint8_t flag);
+rt_err_t rt_mq_send(rt_mq_t mq, const void *buffer, rt_size_t size);
+rt_err_t rt_mq_urgent(rt_mq_t mq, const void *buffer, rt_size_t size);
+rt_err_t rt_mq_recv(rt_mq_t mq, void *buffer, rt_size_t size, rt_int32_t timeout);
+```
+
+### 7.3 特点
+
+- **可变长度**：支持不定长消息
+- **优先级发送**：支持紧急消息插队
+- **异步通信**：发送方无需等待接收方
+
+## 8. 信号管理
+
+### 8.1 核心函数
+
+```c
+rt_sighandler_t rt_signal_install(int signo, rt_sighandler_t handler);
+void rt_signal_mask(int signo);
+void rt_signal_unmask(int signo);
+int rt_signal_wait(const rt_sigset_t *set, rt_siginfo_t *si, rt_int32_t timeout);
+int rt_thread_kill(rt_thread_t tid, int sig);
+```
+
+### 8.2 处理方式
+
+- **自定义处理**：指定处理函数
+- **忽略信号**：设置为SIG_IGN
+- **默认处理**：设置为SIG_DFL
+
+### 8.3 用户信号
+
+- **SIGUSR1**：用户自定义信号1
+- **SIGUSR2**：用户自定义信号2
+
+## 9. 选择指南
+
+|通信机制|数据传输|同步方式|适用场景|
+|---|---|---|---|
+|信号量|无|计数同步|资源计数、互斥访问|
+|互斥量|无|互斥同步|临界区保护、防优先级翻转|
+|事件|无|多条件同步|复杂同步条件、一对多通信|
+|邮箱|4字节|有缓存|简单数据传递、指针传递|
+|消息队列|可变长|有缓存|复杂数据传递、异步通信|
+|信号|无|异步通知|异常处理、事件通知|
+
+## 10. 最佳实践
+
+### 10.1 避免死锁
+
+```c
+// 按固定顺序获取多个互斥量
+rt_mutex_take(mutex1, RT_WAITING_FOREVER);
+rt_mutex_take(mutex2, RT_WAITING_FOREVER);
+// 处理临界区
+rt_mutex_release(mutex2);
+rt_mutex_release(mutex1);
+```

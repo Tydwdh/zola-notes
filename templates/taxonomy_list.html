@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}标签 | {{ config.title }}{% endblock title %}
+
+{% block content %}
+<section class="section-heading">
+  <h1>{{ taxonomy.name }}</h1>
+</section>
+
+<section class="tag-cloud" aria-label="{{ taxonomy.name }}">
+  {% for term in terms %}
+  <a href="{{ term.permalink | safe }}">{{ term.name }} <span>{{ term.pages | length }}</span></a>
+  {% endfor %}
+</section>
+{% endblock content %}
+
